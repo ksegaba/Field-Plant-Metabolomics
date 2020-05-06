@@ -8,7 +8,7 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(fig.align="center", fig.height=5, message=FALSE, warning=FALSE, fig.width=8, tidy.opts=list(width.cutoff=60),tidy=TRUE)
 ```
 This file was run in R version 3.5.3. The packages used are `tidyverse` version 1.3.0, `readr` version 1.3.1, `RRPP` version 0.4.2.9000, `mixOmics` version 6.6.2, and `labdsv` version 2.0-1. This file must be in the same directory as the Box sync folder in order to run. The following analysis of lipid metabolites was conducted using a split-plot analysis of variance (ANOVA) of Young and Old *P. virgatum* leaves using residual randomization permutation procedure (`RRPP`). Patterns in metabolite classification were visualized using `mixOmics` for principle component analysis (PCA) and partial least squares discriminant analysis (PLS-DA). Dufrene-Legendre indicator analysis was performed to identify specific metabolites indicative of plant response to water treatment and fungal treatment (`labdsv`).
 
@@ -211,9 +211,21 @@ selectVar(young.splsda, comp=1)
 plotLoadings(young.splsda, contrib = 'max', method = 'mean', ndisplay = 50)
 ```
 
+## Heatmaps of Averaged Data
+
+11. Create averaged metabolite matrices and rerun PLS-DA to create a heatmap.
+```{r}
+## Young Leaves
+av_Y_young <- aggregate(Y_young, by = list(class$Water, class$Fungus), FUN = "mean", simplify = T, data = class)
+av.young.plsda <- mixOmics::plsda(av_Y_young[,3:1605], av_Y_young$Group.2) # fungus
+
+# heatmap
+youngcim <- cim(av.young.plsda, title = "Young Leaf Lipids (neg) Averaged Over Fungi", col.names = F, xlab = "Lipids", save = 'png', name.save = "~/Box/Summer 2018 TX Endo Field Samples and Analysis/Statistics/Kenia_Thesis_Analysis/Lipids Statistics/young_fungi_avlneg_hm.png") # by fungal treatment
+```
+
 ## Indicator Analysis
 
-11. Identify indicator metabolites characteristic of each treatment using Dufrene-Legendre Indicator Analysis.
+12. Identify indicator metabolites characteristic of each treatment using Dufrene-Legendre Indicator Analysis.
 ```{r}
 # Old Leaf
 indicator_Fungus <- indval(Y_young, clustering = class$Fungus, numitr = 999, type = "long")
@@ -222,7 +234,7 @@ indicator_Fungus <- indval(Y_young, clustering = class$Fungus, numitr = 999, typ
 indicator_Fungus <- indval(Y_young, clustering = class$Fungus, numitr = 999, type = "long")
 ```
 
-12. Disect indval object.
+13. Disect indval object.
 ```{r}
 Orelfrq <- indicator_Fungus$relfrq # relative frequency of species in classes
 Orelabu <- indicator_Fungus$relabu # relative abundance of species in classes
@@ -239,7 +251,7 @@ Yindcls <- data.frame(indicator_Fungus$indcls) # the indicator value for each sp
 Ypval <- data.frame(indicator_Fungus$pval) # the probability of obtaining as high an indicator value as observed over the specified iterations
 ```
 
-13. Export results to a csv file.
+14. Export results to a csv file.
 ```{r}
 write.csv(cbind(Orelfrq, Orelabu, Oindval, Omaxcls, Oindcls, Opval), "~/Box/Summer 2018 TX Endo Field Samples and Analysis/Statistics/Kenia_Thesis_Analysis/Lipids Statistics/Indicator_Analys_oLneg_Fungus.csv")
 write.csv(cbind(Yrelfrq, Yrelabu, Yindval, Ymaxcls, Yindcls, Ypval), "~/Box/Summer 2018 TX Endo Field Samples and Analysis/Statistics/Kenia_Thesis_Analysis/Lipids Statistics/Indicator_Analys_yLneg_Fungus.csv")
@@ -437,9 +449,21 @@ selectVar(young.splsda, comp=1)
 plotLoadings(young.splsda, contrib = 'max', method = 'mean', ndisplay = 50)
 ```
 
+## Heatmaps of Averaged Data
+
+11. Create averaged metabolite matrices and rerun PLS-DA to create a heatmap.
+```{r}
+## Young Leaves
+av_Y_young <- aggregate(Y_young, by = list(class$Water, class$Fungus), FUN = "mean", simplify = T, data = class)
+av.young.plsda <- mixOmics::plsda(av_Y_young[,3:1755], av_Y_young$Group.2) # fungus
+
+# heatmap
+youngcim <- cim(av.young.plsda, title = "Young Leaf Lipids (pos) Averaged Over Fungi", col.names = F, xlab = "Lipids", save = 'png', name.save = "~/Box/Summer 2018 TX Endo Field Samples and Analysis/Statistics/Kenia_Thesis_Analysis/Lipids Statistics/young_fungi_avlpos_hm.png") # by fungal treatment
+```
+
 ## Indicator Analysis
 
-11. Identify indicator metabolites characteristic of each treatment using Dufrene-Legendre Indicator Analysis.
+12. Identify indicator metabolites characteristic of each treatment using Dufrene-Legendre Indicator Analysis.
 ```{r}
 # Old Leaf
 indicator_Fungus <- indval(Y_young, clustering = class$Fungus, numitr = 999, type = "long")
@@ -448,7 +472,7 @@ indicator_Fungus <- indval(Y_young, clustering = class$Fungus, numitr = 999, typ
 indicator_Fungus <- indval(Y_young, clustering = class$Fungus, numitr = 999, type = "long")
 ```
 
-12. Disect indval object.
+13. Disect indval object.
 ```{r}
 Orelfrq <- indicator_Fungus$relfrq # relative frequency of species in classes
 Orelabu <- indicator_Fungus$relabu # relative abundance of species in classes
@@ -465,7 +489,7 @@ Yindcls <- data.frame(indicator_Fungus$indcls) # the indicator value for each sp
 Ypval <- data.frame(indicator_Fungus$pval) # the probability of obtaining as high an indicator value as observed over the specified iterations
 ```
 
-13. Export results to a csv file.
+14. Export results to a csv file.
 ```{r}
 write.csv(cbind(Orelfrq, Orelabu, Oindval, Omaxcls, Oindcls, Opval), "~/Box/Summer 2018 TX Endo Field Samples and Analysis/Statistics/Kenia_Thesis_Analysis/Lipids Statistics/Indicator_Analys_oLpos_Fungus.csv")
 write.csv(cbind(Yrelfrq, Yrelabu, Yindval, Ymaxcls, Yindcls, Ypval), "~/Box/Summer 2018 TX Endo Field Samples and Analysis/Statistics/Kenia_Thesis_Analysis/Lipids Statistics/Indicator_Analys_yLpos_Fungus.csv")
