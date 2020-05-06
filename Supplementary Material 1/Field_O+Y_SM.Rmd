@@ -1,0 +1,524 @@
+---
+title: "Field Old and Young Leaves Secondary Metabolites Analysis"
+author: "Kenia E. Segura Aba"
+date: "4/30/2020"
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.align="center", fig.height=5, message=FALSE, warning=FALSE, fig.width=8, tidy.opts=list(width.cutoff=60),tidy=TRUE)
+```
+This file was run in R version 3.5.3. The packages used are `tidyverse` version 1.3.0, `readr` version 1.3.1, `RRPP` version 0.4.2.9000, `mixOmics` version 6.6.2, and `labdsv` version 2.0-1. The following analysis of secondary metabolites was conducted using a split-plot analysis of variance (ANOVA) of Young and Old *P. virgatum* leaves using residual randomization permutation procedure (`RRPP`). Patterns in metabolite classification were visualized using `mixOmics` for principle component analysis (PCA) and partial least squares discriminant analysis (PLS-DA). Dufrene-Legendre indicator analysis was performed to identify specific metabolites indicative of plant response to water treatment and fungal treatment (`labdsv`). 
+
+1. Load necessary packages
+```{r}
+library(tidyverse)
+library(readr)
+library(RRPP)
+library(mixOmics)
+library(labdsv)
+```
+
+# Secondary Metabolites (Neg)
+
+## RRPP
+
+2. Define dependent variable matrix and class matrix.
+```{r}
+path <- "~/Box/Summer 2018 TX Endo Field Samples and Analysis/Statistics/Kenia_Thesis_Analysis/"
+
+O_SM_neg <- read_tsv(paste(path,"XCMS Online Results/O_SM_Neg/XCMS.annotated.Report_1394387.tsv", sep=""))
+
+Y_SM_neg <- read_tsv(paste(path,"XCMS Online Results/Y_SM_Neg/XCMS.annotated.Report_1394397.tsv", sep=""))
+
+# dependent variable: metabolite intensities
+Y_old <- O_SM_neg[,c(2,12:54)] %>% data.frame(row.names=1) %>% t %>% data.frame()
+scaled_Y_old <- scale(Y_old)
+
+Y_young <- Y_SM_neg[,c(2,12:54)] %>% data.frame(row.names=1) %>% t %>% data.frame()
+scaled_Y_young <- scale(Y_young)
+
+# class: sample factors
+class <- read.csv(paste(path,"XCMS Online Results/class.csv", sep=""), header = T, row.names = 1)
+```
+
+3. Define and run multivariate regression models, then print out the results.
+```{r}
+O_LMneg <- lm.rrpp(scaled_Y_old ~ Block * Water * Fungus, data = class, SS.type = "III", print.progress = F); summary(O_LMneg)
+Y_LMneg <- lm.rrpp(scaled_Y_young ~ Block * Water * Fungus, data = class, SS.type = "III", print.progress = F); summary(Y_LMneg)
+```
+
+4. Examine RRPP plots to check for assumptions.
+```{r}
+## Old Leaves
+# residuals vs fitted values (homoscedasticity check)
+Odiagnostics <- plot(O_LMneg, type = "diagnostics")
+
+# linear regression plot
+Oregression <- plot(O_LMneg, type = "regression", predictor = class$Fungus, reg.type = "RegScore")
+
+# pca plot
+Opcplot <- plot(O_LMneg, type = "PC", pch = 19, col = interaction(class$Water, class$Fungus))
+
+
+## Young Leaves
+# residuals vs fitted values (homoscedasticity check)
+Ydiagnostics <- plot(Y_LMneg, type = "diagnostics")
+
+# linear regression plot
+Yregression <- plot(Y_LMneg, type = "regression", predictor = class$Fungus, reg.type = "RegScore")
+
+# pca plot
+Ypcplot <- plot(Y_LMneg, type = "PC", pch = 19, col = interaction(class$Water, class$Fungus))
+```
+
+5. Perform an RRPP ANOVA and print results.
+```{r}
+## Old Leaves
+OnegANOVA <- anova(O_LMneg, effect.type = "F", error = c("Residuals", "Block:Water", "Block:Water:Fungus", "Residuals", "Block:Water:Fungus", "Block:Water:Fungus", "Residuals")) ; summary(OnegANOVA, formula = T)
+
+
+## Young Leaves
+YnegANOVA <- anova(Y_LMneg, effect.type = "F", error = c("Residuals", "Block:Water", "Block:Water:Fungus", "Residuals", "Block:Water:Fungus", "Block:Water:Fungus", "Residuals")) ; summary(YnegANOVA, formula = T)
+```
+
+6. Test lm.rrpp model coefficients. "d" is the amount of change in a variable for the coefficient indicated.
+```{r}
+## Old Leaves
+# test model coefficients
+Onegcoef <- coef(O_LMneg, test = T) ; summary(Onegcoef)
+
+## Young Leaves
+# test model coefficients
+Ynegcoef <- coef(Y_LMneg, test = T) ; summary(Ynegcoef)
+```
+WaterLow has the largest effect on the model. The standard is the mean for High water treatment.
+
+7. Compute predicted values from the lm.rrpp model fit using bootstrapped residuals to generate confidence intervals (precision of group mean estimates). 
+```{r}
+O_pred <- predict(O_LMneg) ; plot(O_pred, PC = T, ellipse = T)
+
+Y_pred <- predict(Y_LMneg) ; plot(Y_pred, PC = T, ellipse = T)
+```
+
+8. Test pairwise differences between least squares means. Similar to tukeyHSD function in the r stats package. The pairwise function will generate tables with confidence intervals and p‐values for the pairwise statistic, Euclidean distance between least‐squares means.
+```{r}
+## Old Leaves
+# pairwise differences of water 
+Onegpw <- pairwise(O_LMneg, groups = class$Water); summary(Onegpw, confidence = 0.95, stat.table = T)
+
+## Young Leaves
+# pairwise differences of water
+Ynegpw <- pairwise(Y_LMneg, groups = class$Water); summary(Ynegpw, confidence = 0.95, stat.table = T)
+Ynegpw2 <- pairwise(Y_LMneg, groups = class$Fungus); summary(Ynegpw2, confidence = 0.95, stat.table = T)
+```
+
+
+## PCA
+
+8. Identify the major source of variation in data and determine if the variation is sourced from experimental bias or biological conditions.
+```{r}
+# Old Leaf Secondary Metabolites (Neg)
+# tune how many components to use
+tune.pca(scaled_Y_old)
+
+pca.res <- mixOmics::pca(scaled_Y_old, ncomp = 4, scale = F)
+
+# plot pca
+plotIndiv(pca.res, group = class$Water, ind.names = F, pch = as.factor(class$Fungus), legend = T, legend.title = "Water", legend.title.pch = "Fungus", title = "Old Leaf Secondary Metabolites (Neg) PCA")
+
+# Look at variable coefficients in each component with the loading vectors
+# The absolute value of loading vectors represent the importance of each
+# variable to define each PC
+plotLoadings(pca.res, ndisplay = 50)
+
+# Young Leaf Secondary Metabolites (Neg)
+# tune how many components to use
+tune.pca(scaled_Y_young)
+
+pca.res <- mixOmics::pca(scaled_Y_young, ncomp = 3, scale = F)
+
+# plot pca
+plotIndiv(pca.res, group = class$Water, ind.names = F ,pch = as.factor(class$Fungus), legend = T, legend.title = "Water", legend.title.pch = "Fungus", title = "Young Leaf Secondary Metabolites (Neg) PCA")
+
+# Look at variable coefficients in each component with the loading vectors
+# The absolute value of loading vectors represent the importance of each
+# variable to define each PC
+plotLoadings(pca.res, ndisplay = 50)
+```
+
+9. Identify the variables that contribute to the explained variance.
+```{r}
+# Old Leaf
+spca.res <- mixOmics::spca(scaled_Y_old, ncomp = 4, keepX = c(100,100,10,10))
+
+# plot spca
+plotIndiv(spca.res, group = class$Water, ind.names = F, pch = as.factor(class$Fungus), legend = T, legend.title = "Water", legend.title.pch = "Fungus", title = "Old Leaf Secondary Metabolites (Neg) sPCA")
+
+# variables contributing to each component
+plotVar(spca.res, cex = 1)
+selectVar(spca.res, comp = 1)$value # view loading value of each metabolite
+
+# plot loadings for comp 1
+plotLoadings(spca.res, ndisplay = 50)
+
+# plot loadings for comp 2
+plotLoadings(spca.res, comp=2, ndisplay = 50)
+
+
+# Young Leaf
+spca.res <- mixOmics::spca(scaled_Y_young, ncomp = 3, keepX = c(100,100,10))
+
+# plot spca
+plotIndiv(spca.res, group = class$Water, ind.names = F, pch = as.factor(class$Fungus), legend = T, legend.title = "Water", legend.title.pch = "Fungus", title = "Young Leaf Secondary Metabolites (Neg) sPCA")
+
+# variables contributing to each component
+plotVar(spca.res, cex = 1)
+selectVar(spca.res, comp = 1)$value # view loading value of each metabolite
+
+# plot loadings for comp 1
+plotLoadings(spca.res, ndisplay = 50)
+
+# plot loadings for comp 2
+plotLoadings(spca.res, comp=2, ndisplay = 50)
+```
+
+## PLS-DA
+
+10. Classify samples into known groups and predict the class of new samples. 
+```{r}
+# Old Leaf
+old.splsda <- mixOmics::splsda(scaled_Y_old, class$Water, keepX = c(100,100))
+
+# plot pls-da
+plotIndiv(old.splsda, ind.names = F, legend = T, title = "Old Leaf Secondary Metabolites (Neg) PLS-DA", legend.title = "Water", ellipse = T)
+
+# plot and select the variables
+plotVar(old.splsda)
+selectVar(old.splsda, comp=1)
+plotLoadings(old.splsda, contrib = 'max', method = 'mean', ndisplay = 50)
+
+# Young Leaf
+young.splsda <- mixOmics::splsda(scaled_Y_young, class$Water, keepX = c(100,100))
+young.splsda2 <- mixOmics::splsda(scaled_Y_young, class$Fungus, keepX = c(100,100))
+
+# plot pls-da
+plotIndiv(young.splsda, ind.names = F, legend = T, title = "Young Leaf Secondary Met. (Neg) PLS-DA", legend.title = "Water", ellipse = T)
+
+plotIndiv(young.splsda2, ind.names = F, legend = T, title = "Young Leaf Secondary Met. (Neg) PLS-DA", legend.title = "Fungus", ellipse = T)
+
+# plot and select the variables
+plotVar(young.splsda)
+selectVar(young.splsda, comp=1)
+plotLoadings(young.splsda, contrib = 'max', method = 'mean', ndisplay = 50)
+```
+
+## Heatmaps of Averaged Data
+
+11. Create averaged metabolite matrices and rerun PLS-DA to create a heatmap.
+```{r}
+## Old Leaves
+av_Y_old <- aggregate(Y_old, by = list(class$Water, class$Fungus), FUN = "mean", simplify = T, data = class)
+av.old.plsda <- mixOmics::plsda(av_Y_old[,3:3735], av_Y_old$Group.1) # water
+
+# heatmap
+oldcim <- cim(av.old.plsda, title = "Old Leaf Secondary Met. (neg) Averaged Over Water", col.names = F, xlab = "Secondary Metabolites", save = 'png', name.save = "~/Box/Summer 2018 TX Endo Field Samples and Analysis/Statistics/Kenia_Thesis_Analysis/Secondary Metabolites Statistics/old_water_avsmneg_hm.png") # by water treatment
+
+## Young Leaves
+av_Y_young <- aggregate(Y_young, by = list(class$Water, class$Fungus), FUN = "mean", simplify = T, data = class)
+av.young.plsda <- mixOmics::plsda(av_Y_young[,3:2566], av_Y_young$Group.1) # water
+av.young.plsda2 <- mixOmics::plsda(av_Y_young[,3:2566], av_Y_young$Group.2) # fungus
+
+# heatmap
+youngcim <- cim(av.young.plsda, title = "Young Leaf Secondary Met. (neg) Averaged Over Water", col.names = F, xlab = "Secondary Metabolites", save = 'png', name.save = "~/Box/Summer 2018 TX Endo Field Samples and Analysis/Statistics/Kenia_Thesis_Analysis/Secondary Metabolites Statistics/young_water_avsmneg_hm.png") # by water treatment
+
+# heatmap
+youngcim2 <- cim(av.young.plsda2, title = "Young Leaf Secondary Met. (neg) Averaged Over Fungi", col.names = F, xlab = "Secondary Metabolites", save = 'png', name.save = "~/Box/Summer 2018 TX Endo Field Samples and Analysis/Statistics/Kenia_Thesis_Analysis/Secondary Metabolites Statistics/young_fungus_avsmneg_hm.png") # by fungal treatment
+```
+
+
+## Indicator Analysis
+
+12. Identify indicator metabolites characteristic of each treatment using Dufrene-Legendre Indicator Analysis.
+```{r}
+# Old Leaf
+indicator_Water <- indval(Y_young, clustering = class$Water, numitr = 999, type = "long")
+
+# Young Leaf
+indicator_Water <- indval(Y_young, clustering = class$Water, numitr = 999, type = "long")
+```
+
+13. Disect indval object.
+```{r}
+Orelfrq <- indicator_Water$relfrq # relative frequency of species in classes
+Orelabu <- indicator_Water$relabu # relative abundance of species in classes
+Oindval <- indicator_Water$indval # the indicator value for each species
+Omaxcls <- data.frame(indicator_Water$maxcls) # the class each species has max indicator value for
+Oindcls <- data.frame(indicator_Water$indcls) # the indicator value for each species to its max class
+Opval <- data.frame(indicator_Water$pval) # the probability of obtaining as high an indicator value as observed over the specified iterations
+
+Yrelfrq <- indicator_Water$relfrq # relative frequency of species in classes
+Yrelabu <- indicator_Water$relabu # relative abundance of species in classes
+Yindval <- indicator_Water$indval # the indicator value for each species
+Ymaxcls <- data.frame(indicator_Water$maxcls) # the class each species has max indicator value for
+Yindcls <- data.frame(indicator_Water$indcls) # the indicator value for each species to its max class
+Ypval <- data.frame(indicator_Water$pval) # the probability of obtaining as high an indicator value as observed over the specified iterations
+```
+
+14. Export results to a csv file.
+```{r}
+write.csv(cbind(Orelfrq, Orelabu, Oindval, Omaxcls, Oindcls, Opval), "~/Box/Summer 2018 TX Endo Field Samples and Analysis/Statistics/Kenia_Thesis_Analysis/Secondary Metabolites Statistics/Indicator_Analys_oSMneg_Water.csv")
+write.csv(cbind(Yrelfrq, Yrelabu, Yindval, Ymaxcls, Yindcls, Ypval), "~/Box/Summer 2018 TX Endo Field Samples and Analysis/Statistics/Kenia_Thesis_Analysis/Secondary Metabolites Statistics/Indicator_Analys_ySMneg_Water.csv")
+```
+
+---
+
+# Secondary Metabolites (Pos)
+
+## RRPP
+
+2. Define dependent variable matrix and class matrix.
+```{r}
+path <- "~/Box/Summer 2018 TX Endo Field Samples and Analysis/Statistics/Kenia_Thesis_Analysis/"
+
+O_SM_pos <- read_tsv(paste(path,"XCMS Online Results/O_SM_Pos/XCMS.annotated.Report_1394418.tsv", sep=""))
+
+Y_SM_pos <- read_tsv(paste(path,"XCMS Online Results/Y_SM_Pos/XCMS.annotated.Report_1394440.tsv", sep=""))
+
+# dependent variable: metabolite intensities
+Y_old <- O_SM_pos[,c(2,12:54)] %>% data.frame(row.names=1) %>% t %>% data.frame()
+scaled_Y_old <- scale(Y_old)
+
+Y_young <- Y_SM_pos[,c(2,12:54)] %>% data.frame(row.names=1) %>% t %>% data.frame()
+scaled_Y_young <- scale(Y_young)
+
+# class: sample factors
+class <- read.csv(paste(path,"XCMS Online Results/class.csv", sep=""), header = T, row.names = 1)
+```
+
+3. Define and run multivariate regression models, then print out the results.
+```{r}
+O_LMpos <- lm.rrpp(scaled_Y_old ~ Block * Water * Fungus, data = class, SS.type = "III", print.progress = F); summary(O_LMpos)
+Y_LMpos <- lm.rrpp(scaled_Y_young ~ Block * Water * Fungus, data = class, SS.type = "III", print.progress = F); summary(Y_LMpos)
+```
+
+4. Examine RRPP plots to check for assumptions.
+```{r}
+## Old Leaves
+# residuals vs fitted values (homoscedasticity check)
+Odiagnostics <- plot(O_LMpos, type = "diagnostics")
+
+# linear regression plot
+Oregression <- plot(O_LMpos, type = "regression", predictor = class$Fungus, reg.type = "RegScore")
+
+# pca plot
+Opcplot <- plot(O_LMpos, type = "PC", pch = 19, col = interaction(class$Water, class$Fungus))
+
+
+## Young Leaves
+# residuals vs fitted values (homoscedasticity check)
+Ydiagnostics <- plot(Y_LMpos, type = "diagnostics")
+
+# linear regression plot
+Yregression <- plot(Y_LMpos, type = "regression", predictor = class$Fungus, reg.type = "RegScore")
+
+# pca plot
+Ypcplot <- plot(Y_LMpos, type = "PC", pch = 19, col = interaction(class$Water, class$Fungus))
+```
+
+5. Perform an RRPP ANOVA and print results.
+```{r}
+## Old Leaves
+OposANOVA <- anova(O_LMpos, effect.type = "F", error = c("Residuals", "Block:Water", "Block:Water:Fungus", "Residuals", "Block:Water:Fungus", "Block:Water:Fungus", "Residuals")) ; summary(OposANOVA, formula = T)
+
+
+## Young Leaves
+YposANOVA <- anova(Y_LMpos, effect.type = "F", error = c("Residuals", "Block:Water", "Block:Water:Fungus", "Residuals", "Block:Water:Fungus", "Block:Water:Fungus", "Residuals")) ; summary(YposANOVA, formula = T)
+```
+
+6. Test lm.rrpp model coefficients. "d" is the amount of change in a variable for the coefficient indicated.
+```{r}
+## Old Leaves
+# test model coefficients
+Oposcoef <- coef(O_LMpos, test = T) ; summary(Oposcoef)
+
+## Young Leaves
+# test model coefficients
+Yposcoef <- coef(Y_LMpos, test = T) ; summary(Yposcoef)
+```
+Block and Fungus have the largest effect on the model for old leaves, but not their interaction. The standard is the mean for High water treatment. For young leaves, Block, Fungus, Block:Fungus, and Block:WaterLow:Fungus have the largest effect on the model.
+
+7. Compute predicted values from the lm.rrpp model fit using bootstrapped residuals to generate confidence intervals (precision of group mean estimates). 
+```{r}
+O_pred <- predict(O_LMpos) ; plot(O_pred, PC = T, ellipse = T)
+
+Y_pred <- predict(Y_LMpos) ; plot(Y_pred, PC = T, ellipse = T)
+```
+
+8. Test pairwise differences between least squares means. Similar to tukeyHSD function in the r stats package. The pairwise function will generate tables with confidence intervals and p‐values for the pairwise statistic, Euclidean distance between least‐squares means.
+```{r}
+## Old Leaves
+# pairwise differences of fungus 
+Opospw <- pairwise(O_LMpos, groups = class$Fungus); summary(Opospw, confidence = 0.95, stat.table = T)
+
+## Young Leaves
+# pairwise differences of fungus
+Ypospw <- pairwise(Y_LMpos, groups = class$Fungus); summary(Ypospw, confidence = 0.95, stat.table = T)
+```
+
+
+## PCA
+
+8. Identify the major source of variation in data and determine if the variation is sourced from experimental bias or biological conditions.
+```{r}
+# Old Leaf Secondary Metabolites (Pos)
+# tune how many components to use
+tune.pca(scaled_Y_old)
+
+pca.res <- mixOmics::pca(scaled_Y_old, ncomp = 3, scale = F)
+
+# plot pca
+plotIndiv(pca.res, group = class$Fungus, ind.names = F, pch = as.factor(class$Water), legend = T, legend.title = "Fungus", legend.title.pch = "Water", title = "Old Leaf Secondary Metabolites (Pos) PCA")
+
+# Look at variable coefficients in each component with the loading vectors
+# The absolute value of loading vectors represent the importance of each
+# variable to define each PC
+plotLoadings(pca.res, ndisplay = 50)
+
+# Young Leaf Secondary Metabolites (Pos)
+# tune how many components to use
+tune.pca(scaled_Y_young)
+
+pca.res <- mixOmics::pca(scaled_Y_young, ncomp = 3, scale = F)
+
+# plot pca
+plotIndiv(pca.res, group = class$Fungus, ind.names = F ,pch = as.factor(class$Water), legend = T, legend.title = "Fungus", legend.title.pch = "Water", title = "Young Leaf Secondary Metabolites (Pos) PCA")
+
+# Look at variable coefficients in each component with the loading vectors
+# The absolute value of loading vectors represent the importance of each
+# variable to define each PC
+plotLoadings(pca.res, ndisplay = 50)
+```
+
+9. Identify the variables that contribute to the explained variance.
+```{r}
+# Old Leaf
+spca.res <- mixOmics::spca(scaled_Y_old, ncomp = 3, keepX = c(100,100,10))
+
+# plot spca
+plotIndiv(spca.res, group = class$Fungus, ind.names = F, pch = as.factor(class$Water), legend = T, legend.title = "Fungus", legend.title.pch = "Water", title = "Old Leaf Secondary Metabolites (Pos) sPCA")
+
+# variables contributing to each component
+plotVar(spca.res, cex = 1)
+selectVar(spca.res, comp = 1)$value # view loading value of each metabolite
+
+# plot loadings for comp 1
+plotLoadings(spca.res, ndisplay = 50)
+
+# plot loadings for comp 2
+plotLoadings(spca.res, comp=2, ndisplay = 50)
+
+
+# Young Leaf
+spca.res <- mixOmics::spca(scaled_Y_young, ncomp = 3, keepX = c(100,100,10))
+
+# plot spca
+plotIndiv(spca.res, group = class$Fungus, ind.names = F, pch = as.factor(class$Water), legend = T, legend.title = "Fungus", legend.title.pch = "Water", title = "Young Leaf Secondary Metabolites (Pos) sPCA")
+
+# variables contributing to each component
+plotVar(spca.res, cex = 1)
+selectVar(spca.res, comp = 1)$value # view loading value of each metabolite
+
+# plot loadings for comp 1
+plotLoadings(spca.res, ndisplay = 50)
+
+# plot loadings for comp 2
+plotLoadings(spca.res, comp=2, ndisplay = 50)
+```
+
+## PLS-DA
+
+10. Classify samples into known groups and predict the class of new samples. 
+```{r}
+# Old Leaf
+old.splsda <- mixOmics::splsda(scaled_Y_old, class$Fungus, keepX = c(100,100))
+
+# plot pls-da
+plotIndiv(old.splsda, ind.names = F, legend = T, title = "Old Leaf Secondary Metabolites (Pos) PLS-DA", legend.title = "Fungus", ellipse = T)
+
+# plot and select the variables
+plotVar(old.splsda)
+selectVar(old.splsda, comp=1)
+plotLoadings(old.splsda, contrib = 'max', method = 'mean', ndisplay = 50)
+
+# Young Leaf
+young.splsda <- mixOmics::splsda(scaled_Y_young, class$Fungus, keepX = c(100,100))
+
+# plot pls-da
+plotIndiv(young.splsda, ind.names = F, legend = T, title = "Young Leaf Secondary Metabolites (Pos) PLS-DA", legend.title = "Fungus", ellipse = T)
+
+# plot and select the variables
+plotVar(young.splsda)
+selectVar(young.splsda, comp=1)
+plotLoadings(young.splsda, contrib = 'max', method = 'mean', ndisplay = 50)
+```
+
+
+## Heatmaps of Averaged Data
+11. Create averaged metabolite matrices and rerun PLS-DA to create a heatmap.
+```{r}
+## Old Leaves
+av_Y_old <- aggregate(Y_old, by = list(class$Water, class$Fungus), FUN = "mean", simplify = T, data = class)
+av.old.plsda <- mixOmics::plsda(av_Y_old[,3:5802], av_Y_old$Group.2) # fungus
+
+# heatmap
+oldcim <- cim(av.old.plsda, title = "Old Leaf Secondary Met. (pos) Averaged Over Fungi", col.names = F, xlab = "Secondary Metabolites", save = 'png', name.save = "~/Box/Summer 2018 TX Endo Field Samples and Analysis/Statistics/Kenia_Thesis_Analysis/Secondary Metabolites Statistics/old_water_avsmpos_hm.png") # by water treatment
+```
+
+
+## Indicator Analysis
+
+12. Identify indicator metabolites characteristic of each treatment using Dufrene-Legendre Indicator Analysis.
+```{r}
+# Old Leaf
+indicator_Fungus <- indval(Y_young, clustering = class$Fungus, numitr = 999, type = "long")
+
+# Young Leaf
+indicator_Fungus <- indval(Y_young, clustering = class$Fungus, numitr = 999, type = "long")
+```
+
+13. Disect indval object.
+```{r}
+Orelfrq <- indicator_Fungus$relfrq # relative frequency of species in classes
+Orelabu <- indicator_Fungus$relabu # relative abundance of species in classes
+Oindval <- indicator_Fungus$indval # the indicator value for each species
+Omaxcls <- data.frame(indicator_Fungus$maxcls) # the class each species has max indicator value for
+Oindcls <- data.frame(indicator_Fungus$indcls) # the indicator value for each species to its max class
+Opval <- data.frame(indicator_Fungus$pval) # the probability of obtaining as high an indicator value as observed over the specified iterations
+
+Yrelfrq <- indicator_Fungus$relfrq # relative frequency of species in classes
+Yrelabu <- indicator_Fungus$relabu # relative abundance of species in classes
+Yindval <- indicator_Fungus$indval # the indicator value for each species
+Ymaxcls <- data.frame(indicator_Fungus$maxcls) # the class each species has max indicator value for
+Yindcls <- data.frame(indicator_Fungus$indcls) # the indicator value for each species to its max class
+Ypval <- data.frame(indicator_Fungus$pval) # the probability of obtaining as high an indicator value as observed over the specified iterations
+```
+
+14. Export results to a csv file.
+```{r}
+write.csv(cbind(Orelfrq, Orelabu, Oindval, Omaxcls, Oindcls, Opval), "~/Box/Summer 2018 TX Endo Field Samples and Analysis/Statistics/Kenia_Thesis_Analysis/Secondary Metabolites Statistics/Indicator_Analys_oSMpos_Fungus.csv")
+write.csv(cbind(Yrelfrq, Yrelabu, Yindval, Ymaxcls, Yindcls, Ypval), "~/Box/Summer 2018 TX Endo Field Samples and Analysis/Statistics/Kenia_Thesis_Analysis/Secondary Metabolites Statistics/Indicator_Analys_ySMpos_Fungus.csv")
+```
+
+---
+
+## References
+
+Collyer, M.L., Adams, D.C. 2018. RRPP: An r package for fitting linear models to high-dimensional data using residual randomization. Methods in Ecology and Evolution. 9(7):1772-1779.
+
+Dufrene, M. and Legendre, P. 1997. Species assemblages and indicator species: the need for a flexible asymmetrical approach. Ecol. Monogr. 67(3):345-366.
+
+Rohart, F., Gautier, B., Singh, A., & Lê Cao, K. A. 2017. mixOmics: An R package for ‘omics feature selection and multiple data integration. PLoS computational biology, 13(11):e1005752.
