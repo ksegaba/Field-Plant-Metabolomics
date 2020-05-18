@@ -1,0 +1,117 @@
+---
+title: "Field Old and Young Leaf Water ANOVAs"
+author: "Kenia E. Segura Aba"
+date: "5/5/2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This file was run in R version 3.5.3. The packages used are `tidyverse` version 1.3.0, `readr` version 1.3.1, `RRPP` version 0.4.2.9000, `mixOmics` version 6.6.2, and `labdsv` version 2.0-1. This file must be in the same directory as the Box sync folder in order to run. The following analysis of lipid metabolites was conducted using a split-split-plot analysis of variance (ANOVA) of Young and Old *P. virgatum* leaves using residual randomization permutation procedure (`RRPP`). Patterns in metabolite classification were visualized using `mixOmics` for principle component analysis (PCA) and partial least squares discriminant analysis (PLS-DA). Dufrene-Legendre indicator analysis was performed to identify specific metabolites indicative of plant response to water treatment and fungal treatment (`labdsv`).
+
+1. Load necessary packages
+```{r}
+library(tidyverse)
+library(readr)
+library(RRPP)
+library(mixOmics)
+library(labdsv)
+```
+
+# Secondary Metabolites (Neg)
+
+## RRPP
+
+2. Define dependent variable matrix and class matrix.
+```{r}
+path <- "~/Box/Summer 2018 TX Endo Field Samples and Analysis/Statistics/Kenia_Thesis_Analysis/"
+
+SM_neg <- read_tsv(paste(path,"XCMS Online Results/Pairwise Old vs Young/Pairwise_SM_Neg/XCMS.annotated.diffreport..Y_Field_SMNeg_Kenia_Thesis.vs.O_Field_SMNeg_Kenia_Thesis.tsv", sep=""))
+
+# dependent variable: metabolite intensities
+Y <- SM_neg[,c(9,23:108)] %>% data.frame(row.names=1) %>% t %>% data.frame()
+scaled_Y <- scale(Y)
+
+# class: sample factors
+class <- read.csv(paste(path,"XCMS Online Results/pw_class.csv", sep=""), header = T, row.names = 1)
+
+# define dependent variable matrices for each water treatment
+high <- data.frame(cbind(Y,class)) %>% group_by(Water) %>% filter(Water=="High")
+shigh <- scale(data.frame(high[,1:42]))
+low <- data.frame(cbind(Y,class)) %>% group_by(Water) %>% filter(Water=="Low")
+slow <- scale(low[,1:36])
+```
+
+3. Define and run multivariate regression models, then print out the results.
+```{r}
+highLM <- lm.rrpp(shigh ~ Block * Fungus * Age, data = high, SS.type = "III", print.progress = F); summary(highLM)
+lowLM <- lm.rrpp(slow ~ Block * Fungus * Age, data = low, SS.type = "III", print.progress = F) ; summary(lowLM)
+```
+
+4. Examine RRPP plots to check for assumptions.
+```{r}
+## High
+# residuals vs fitted values (homoscedasticity check)
+diagnostics <- plot(highLM, type = "diagnostics")
+
+# linear regression plot
+regression <- plot(highLM, type = "regression", predictor = high$Fungus, reg.type = "RegScore")
+
+# pca plot
+pcplot <- plot(highLM, type = "PC", pch = 19, col = interaction(high$Water, high$Fungus))
+
+## Low
+# residuals vs fitted values (homoscedasticity check)
+diagnostics <- plot(lowLM, type = "diagnostics")
+
+# linear regression plot
+regression <- plot(lowLM, type = "regression", predictor = low$Fungus, reg.type = "RegScore")
+
+# pca plot
+pcplot <- plot(lowLM, type = "PC", pch = 19, col = interaction(low$Water, low$Fungus))
+```
+
+5. Perform an RRPP ANOVA and print results.
+```{r}
+## High
+highANOVA <- anova(highLM, effect.type = "F", error = c("Residuals", "Block:Fungus", "Block:Fungus:Age", "Residuals", "Block:Fungus:Age", "Block:Fungus:Age", "Residuals")) ; summary(highANOVA, formula = T)
+
+
+## Low
+lowANOVA <- anova(lowLM, effect.type = "F", error = c("Residuals", "Block:Fungus", "Block:Fungus:Age", "Residuals", "Block:Fungus:Age", "Block:Fungus:Age", "Residuals")) ; summary(lowANOVA, formula = T)
+```
+
+6. Test lm.rrpp model coefficients. "d" is the amount of change in a variable for the coefficient indicated.
+```{r}
+## High
+# test model coefficients
+highcoef <- coef(highLM, test = T) ; summary(highcoef)
+
+## Low
+# test model coefficients
+lowcoef <- coef(lowLM, test = T) ; summary(lowcoef)
+```
+Fungus has the largest effect on the model for young leaves. The standard is the mean for High water treatment. Block has the largest effect on the model for old leaves. Fungus coming in second.
+
+7. Compute predicted values from the lm.rrpp model fit using bootstrapped residuals to generate confidence intervals (precision of group mean estimates). 
+```{r}
+high_pred <- predict(highLM) ; plot(high_pred, PC = T, ellipse = T)
+
+low_pred <- predict(lowLM) ; plot(low_pred, PC = T, ellipse = T)
+```
+
+8. Test pairwise differences between least squares means. Similar to tukeyHSD function in the r stats package. The pairwise function will generate tables with confidence intervals and p‐values for the pairwise statistic, Euclidean distance between least‐squares means.
+```{r}
+# pairwise differences of fungus 
+highpw <- pairwise(highLM, groups = high$Fungus); summary(highpw, confidence = 0.95, stat.table = T)
+
+# pairwise differences of age
+highpw2 <- pairwise(highLM, groups = high$Age) ; summary(highpw2, confidence = 0.95, stat.table = T)
+
+# pairwise differences of fungus
+lowpw <- pairwise(lowLM, groups = low$Fungus); summary(lowpw, confidence = 0.95, stat.table = T)
+```
