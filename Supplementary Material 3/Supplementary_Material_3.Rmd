@@ -3,9 +3,9 @@ title: "Field Chlorophyll Analysis of Old and Young Leaves"
 author: "Kenia E. Segura Aba"
 date: "5/2/2020"
 output:
+  word_document: default
   pdf_document: default
   html_document: default
-  word_document: default
 always_allow_html: yes
 ---
 
@@ -217,5 +217,17 @@ ldiagnostics <- plot(lowLM, type = "diagnostics")
 lpcplot <- plot(lowLM, type = "PC", pch = 19, col = interaction(low$Water, low$Fungus))
 ```
 
+9. Indicator Analysis
+```{r}
+library(labdsv)
+## High water
+indicator_high <- indval(high[,5:8], clustering = high$Fungus, numitr = 999, type = "long")
 
+write.csv(cbind(indicator_high$relfrq, indicator_high$relabu, indicator_high$indval, data.frame(indicator_high$maxcls), data.frame(indicator_high$indcls), data.frame(indicator_high$pval)), "~/Box/Summer 2018 TX Endo Field Samples and Analysis/Statistics/Old + Young Chlorophyll/Indicator_Analys_High_Fungus.csv")
+
+## Low water
+indicator_low <- indval(low[,5:8], clustering = low$Fungus, numitr = 999, type = "long")
+
+write.csv(cbind(indicator_low$relfrq, indicator_low$relabu, indicator_low$indval, data.frame(indicator_low$maxcls), data.frame(indicator_low$indcls), data.frame(indicator_low$pval)), "~/Box/Summer 2018 TX Endo Field Samples and Analysis/Statistics/Old + Young Chlorophyll/Indicator_Analys_Low_Fungus.csv")
+```
 
