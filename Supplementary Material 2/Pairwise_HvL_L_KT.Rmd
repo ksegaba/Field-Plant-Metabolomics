@@ -1,0 +1,317 @@
+---
+title: "Field Old and Young Leaves Lipid Analysis"
+author: "Kenia E. Segura Aba"
+date: "55/317/2020"
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.align="center", fig.height=5, message=FALSE, warning=FALSE, fig.width=8, tidy.opts=list(width.cutoff=60),tidy=TRUE)
+```
+This file was run in R version 4.0.0. The packages used are `tidyverse` version 1.3.0, `readr` version 1.3.1, `RRPP` version 0.5.2, `mixOmics` version 6.12.0, and `labdsv` version 2.0-1. This file must be in the same directory as the Box sync folder in order to run. The following analysis of lipid metabolites was conducted using a split-split-plot analysis of variance (ANOVA) of *P. virgatum* leaves (pre-processed in XCMS Online with a `pairwise` job) using residual randomization permutation procedure (`RRPP`). Patterns in metabolite classification were visualized using `mixOmics` for principle component analysis (PCA) and partial least squares discriminant analysis (PLS-DA). Dufrene-Legendre indicator analysis was performed to identify specific metabolites indicative of plant response to water treatment and fungal treatment (`labdsv`).
+
+1. Load necessary packages
+```{r}
+library(tidyverse)
+library(readr)
+library(RRPP)
+library(mixOmics)
+library(labdsv)
+```
+
+# Lipids (neg)
+
+## RRPP
+
+2. Define dependent variable matrix and class matrix.
+```{r}
+path <- "~/Box/Summer 2018 TX Endo Field Samples and Analysis/Statistics/Kenia_Thesis_Analysis/XCMS Online Results/Pairwise High vs Low/"
+
+L_neg <- read_tsv(paste(path,"HvL_L_neg/XCMS.annotated.diffreport..High_F_Lneg_Kenia_Thesis.vs.Low_F_Lneg_Kenia_Thesis.tsv", sep=""))
+
+# dependent variable: metabolite intensities
+Y <- L_neg[,c(9,23:108)] %>% data.frame(row.names=1) %>% t %>% data.frame()
+scaled_Y <- scale(Y)
+
+# class: sample factors
+class <- read.csv(paste(path,"HvL_class.csv", sep=""), header = T, row.names = 1)
+```
+
+3. Define and run multivariate regression models, then print out the results.
+```{r}
+LMneg <- lm.rrpp(scaled_Y ~ Block * Water * Fungus * Age, data = class, SS.type = "III", print.progress = F); summary(LMneg)
+```
+
+4. Examine RRPP plots to check for assumptions.
+```{r}
+# residuals vs fitted values (homoscedasticity check)
+diagnostics <- plot(LMneg, type = "diagnostics")
+
+# pca plot
+pcplot <- plot(LMneg, type = "PC", pch = 19, col = interaction(class$Water, class$Fungus))
+```
+
+5. Perform an RRPP ANOVA and print results.
+```{r}
+## Old Leaves
+ANOVAneg <- anova(LMneg, effect.type = "F", error = c("Residuals", "Block:Water", "Block:Water:Fungus", "Block:Water:Fungus:Age", "Residuals", "Block:Water:Fungus", "Block:Water:Fungus", "Block:Water:Fungus:Age", "Block:Water:Fungus:Age", "Block:Water:Fungus:Age", "Residuals", "Block:Water:Fungus:Age", "Block:Water:Fungus:Age", "Block:Water:Fungus:Age", "Residuals")) ; summary(ANOVAneg, formula = T)
+```
+
+6. Test lm.rrpp model coefficients. "d" is the amount of change in a variable for the coefficient indicated.
+```{r}
+negcoef <- coef(LMneg, test = T) ; summary(negcoef)
+```
+
+7. Test pairwise differences between least squares means. Similar to tukeyHSD function in the r stats package. The pairwise function will generate tables with confidence intervals and p‐values for the pairwise statistic, Euclidean distance between least‐squares means.
+```{r}
+# fungus
+negpw <- pairwise(LMneg, groups = class$Fungus); summary(negpw, confidence = 0.95, stat.table = T)
+
+# water
+negpw2 <- pairwise(LMneg, groups = class$Water); summary(negpw2, confidence = 0.95, stat.table = T)
+
+# age
+negpw3 <- pairwise(LMneg, groups = class$Age); summary(negpw3, confidence = 0.95, stat.table = T)
+```
+
+
+## PCA
+
+8. Identify the major source of variation in data and determine if the variation is sourced from experimental bias or biological conditions.
+```{r}
+# tune how many components to use
+tune.pca(scaled_Y)
+
+pca.res <- mixOmics::pca(scaled_Y, ncomp = 4, scale = F)
+
+# plot pca
+plotIndiv(pca.res, group = class$Age, ind.names = F, pch = as.factor(class$Water), legend = T, legend.title = "Age", legend.title.pch = "Water", title = "Lipids (Neg) PCA")
+
+# Look at variable coefficients in each component with the loading vectors
+# The absolute value of loading vectors represent the importance of each
+# variable to define each PC
+plotLoadings(pca.res, ndisplay = 50)
+```
+
+9. Identify the variables that contribute to the explained variance.
+```{r}
+spca.res <- mixOmics::spca(scaled_Y, ncomp = 4, keepX = c(100,100,10,10))
+
+# plot spca
+plotIndiv(spca.res, group = class$Age, ind.names = F, pch = as.factor(class$Water), legend = T, legend.title = "Age", legend.title.pch = "Water", title = "Lipids (Neg) sPCA")
+
+# variables contributing to each component
+plotVar(spca.res, cex = 1)
+selectVar(spca.res, comp = 1)$value # view loading value of each metabolite
+
+# plot loadings for comp 1
+plotLoadings(spca.res, ndisplay = 50)
+
+# plot loadings for comp 2
+plotLoadings(spca.res, comp=2, ndisplay = 50)
+```
+
+## PLS-DA
+
+10. Classify samples into known groups and predict the class of new samples. 
+```{r}
+Lneg.splsda <- mixOmics::splsda(scaled_Y, class$Water, keepX = c(100,100))
+
+# plot pls-da
+plotIndiv(Lneg.splsda, ind.names = F, legend = T, title = "Lipids (Neg) PLS-DA", legend.title = "Water", ellipse = T)
+
+# plot and select the variables
+plotVar(Lneg.splsda)
+selectVar(Lneg.splsda, comp=1)
+plotLoadings(Lneg.splsda, contrib = 'max', method = 'mean', ndisplay = 50)
+```
+
+## Heatmaps of Averaged Data
+
+11. Create averaged metabolite matrices and rerun PLS-DA to create a heatmap.
+```{r}
+av_Y <- aggregate(Y, by = list(class$Water, class$Fungus, class$Age), FUN = "mean", simplify = T, data = class)
+av.plsda <- mixOmics::plsda(av_Y[,4:594], av_Y$Group.2) # fungus
+
+# heatmap
+negcim <- cim(av.plsda, title = "Average Lipids (neg)", col.names = F, xlab = "Lipids", save = 'png', name.save = "~/Box/Summer 2018 TX Endo Field Samples and Analysis/Statistics/Kenia_Thesis_Analysis/Lipids Statistics/Pairwise HvL Lipid Analysis/avlneg_hm") # by fungal treatment
+```
+
+## Indicator Analysis
+
+12. Identify indicator metabolites characteristic of each treatment using Dufrene-Legendre Indicator Analysis.
+```{r}
+indicator_Age <- indval(Y, clustering = class$Age, numitr = 999, type = "long")
+summary(indicator_Age)
+```
+
+13. Disect indval object.
+```{r}
+relfrq <- indicator_Age$relfrq # relative frequency of species in classes
+relabu <- indicator_Age$relabu # relative abundance of species in classes
+indval <- indicator_Age$indval # the indicator value for each species
+maxcls <- data.frame(indicator_Age$maxcls) # the class each species has max indicator value for
+indcls <- data.frame(indicator_Age$indcls) # the indicator value for each species to its max class
+pval <- data.frame(indicator_Age$pval) # the probability of obtaining as high an indicator value as observed over the specified iterations
+```
+
+14. Export results to a csv file.
+```{r}
+write.csv(cbind(relfrq, relabu, indval, maxcls, indcls, pval), "~/Box/Summer 2018 TX Endo Field Samples and Analysis/Statistics/Kenia_Thesis_Analysis/Lipids Statistics/Pairwise HvL Lipid Analysis/Indicator_Analys_Lneg_Age.csv")
+```
+
+---
+
+# Lipids (Pos)
+
+## RRPP
+
+2. Define dependent variable matrix and class matrix.
+```{r}
+path <- "~/Box/Summer 2018 TX Endo Field Samples and Analysis/Statistics/Kenia_Thesis_Analysis/XCMS Online Results/Pairwise High vs Low/"
+
+L_pos <- read_tsv(paste(path,"HvL_L_pos/XCMS.annotated.diffreport..High_F_Lpos_Kenia_Thesis.vs.Low_F_Lpos_Kenia_Thesis.tsv", sep=""))
+
+# dependent variable: metabolite intensities
+Y <- L_pos[,c(9,23:108)] %>% data.frame(row.names=1) %>% t %>% data.frame()
+scaled_Y <- scale(Y)
+
+# class: sample factors
+class <- read.csv(paste(path,"HvL_class.csv", sep=""), header = T, row.names = 1)
+```
+
+3. Define and run multivariate regression models, then print out the results.
+```{r}
+LMpos <- lm.rrpp(scaled_Y ~ Block * Water * Fungus * Age, data = class, SS.type = "III", print.progress = F); summary(LMpos)
+```
+
+4. Examine RRPP plots to check for assumptions.
+```{r}
+# residuals vs fitted values (homoscedasticity check)
+diagnostics <- plot(LMpos, type = "diagnostics")
+
+# pca plot
+pcplot <- plot(LMpos, type = "PC", pch = 19, col = interaction(class$Water, class$Fungus))
+```
+
+5. Perform an RRPP ANOVA and print results.
+```{r}
+## Old Leaves
+ANOVApos <- anova(LMpos, effect.type = "F", error = c("Residuals", "Block:Water", "Block:Water:Fungus", "Block:Water:Fungus:Age", "Residuals", "Block:Water:Fungus", "Block:Water:Fungus", "Block:Water:Fungus:Age", "Block:Water:Fungus:Age", "Block:Water:Fungus:Age", "Residuals", "Block:Water:Fungus:Age", "Block:Water:Fungus:Age", "Block:Water:Fungus:Age", "Residuals")) ; summary(ANOVApos, formula = T)
+```
+
+6. Test lm.rrpp model coefficients. "d" is the amount of change in a variable for the coefficient indicated.
+```{r}
+poscoef <- coef(LMpos, test = T) ; summary(poscoef)
+```
+
+7. Test pairwise differences between least squares means. Similar to tukeyHSD function in the r stats package. The pairwise function will generate tables with confidence intervals and p‐values for the pairwise statistic, Euclidean distance between least‐squares means.
+```{r}
+# fungus
+pospw <- pairwise(LMpos, groups = class$Fungus); summary(pospw, confidence = 0.95, stat.table = T)
+
+# water
+pospw2 <- pairwise(LMpos, groups = class$Water); summary(pospw2, confidence = 0.95, stat.table = T)
+
+# age
+pospw3 <- pairwise(LMpos, groups = class$Age); summary(pospw3, confidence = 0.95, stat.table = T)
+```
+
+
+## PCA
+
+8. Identify the major source of variation in data and determine if the variation is sourced from experimental bias or biological conditions.
+```{r}
+# tune how many components to use
+tune.pca(scaled_Y)
+
+pca.res <- mixOmics::pca(scaled_Y, ncomp = 4, scale = F)
+
+# plot pca
+plotIndiv(pca.res, group = class$Age, ind.names = F, pch = as.factor(class$Water), legend = T, legend.title = "Age", legend.title.pch = "Water", title = "Lipids (pos) PCA")
+
+# Look at variable coefficients in each component with the loading vectors
+# The absolute value of loading vectors represent the importance of each
+# variable to define each PC
+plotLoadings(pca.res, ndisplay = 50)
+```
+
+9. Identify the variables that contribute to the explained variance.
+```{r}
+spca.res <- mixOmics::spca(scaled_Y, ncomp = 4, keepX = c(100,100,10,10))
+
+# plot spca
+plotIndiv(spca.res, group = class$Age, ind.names = F, pch = as.factor(class$Water), legend = T, legend.title = "Age", legend.title.pch = "Water", title = "Lipids (pos) sPCA")
+
+# variables contributing to each component
+plotVar(spca.res, cex = 1)
+selectVar(spca.res, comp = 1)$value # view loading value of each metabolite
+
+# plot loadings for comp 1
+plotLoadings(spca.res, ndisplay = 50)
+
+# plot loadings for comp 2
+plotLoadings(spca.res, comp=2, ndisplay = 50)
+```
+
+## PLS-DA
+
+10. Classify samples into known groups and predict the class of new samples. 
+```{r}
+Lpos.splsda <- mixOmics::splsda(scaled_Y, class$Water, keepX = c(100,100))
+
+# plot pls-da
+plotIndiv(Lpos.splsda, ind.names = F, legend = T, title = "Lipids (pos) PLS-DA", legend.title = "Water", ellipse = T)
+
+# plot and select the variables
+plotVar(Lpos.splsda)
+selectVar(Lpos.splsda, comp=1)
+plotLoadings(Lpos.splsda, contrib = 'max', method = 'mean', ndisplay = 50)
+```
+
+## Heatmaps of Averaged Data
+
+11. Create averaged metabolite matrices and rerun PLS-DA to create a heatmap.
+```{r}
+av_Y <- aggregate(Y, by = list(class$Water, class$Fungus, class$Age), FUN = "mean", simplify = T, data = class)
+av.plsda <- mixOmics::plsda(av_Y[,4:686], av_Y$Group.2) # fungus
+
+# heatmap
+poscim <- cim(av.plsda, title = "Average Lipids (pos)", col.names = F, xlab = "Lipids", save = 'png', name.save = "~/Box/Summer 2018 TX Endo Field Samples and Analysis/Statistics/Kenia_Thesis_Analysis/Lipids Statistics/Pairwise HvL Lipid Analysis/avlpos_hm") # by fungal treatment
+```
+
+## Indicator Analysis
+
+12. Identify indicator metabolites characteristic of each treatment using Dufrene-Legendre Indicator Analysis.
+```{r}
+indicator_Age <- indval(Y, clustering = class$Age, numitr = 999, type = "long")
+summary(indicator_Age)
+```
+
+13. Disect indval object.
+```{r}
+relfrq <- indicator_Age$relfrq # relative frequency of species in classes
+relabu <- indicator_Age$relabu # relative abundance of species in classes
+indval <- indicator_Age$indval # the indicator value for each species
+maxcls <- data.frame(indicator_Age$maxcls) # the class each species has max indicator value for
+indcls <- data.frame(indicator_Age$indcls) # the indicator value for each species to its max class
+pval <- data.frame(indicator_Age$pval) # the probability of obtaining as high an indicator value as observed over the specified iterations
+```
+
+14. Export results to a csv file.
+```{r}
+write.csv(cbind(relfrq, relabu, indval, maxcls, indcls, pval), "~/Box/Summer 2018 TX Endo Field Samples and Analysis/Statistics/Kenia_Thesis_Analysis/Lipids Statistics/Pairwise HvL Lipid Analysis/Indicator_Analys_Lpos_Age.csv")
+```
+
+---
+
+## References
+
+Collyer, M.L., Adams, D.C. 2018. RRPP: An r package for fitting linear models to high-dimensional data using residual randomization. Methods in Ecology and Evolution. 9(7):1772-1779.
+
+Dufrene, M. and Legendre, P. 1997. Species assemblages and indicator species: the need for a flexible asymmetrical approach. Ecol. Monogr. 67(3):345-366.
+
+Rohart, F., Gautier, B., Singh, A., & Lê Cao, K. A. 2017. mixOmics: An R package for ‘omics feature selection and multiple data integration. PLoS computational biology, 13(11):e1005752.
